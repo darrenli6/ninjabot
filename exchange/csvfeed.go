@@ -66,6 +66,7 @@ func parseHeaders(headers []string) (index map[string]int, additional []string, 
 
 // NewCSVFeed creates a new data feed from CSV files and resample
 func NewCSVFeed(targetTimeframe string, feeds ...PairFeed) (*CSVFeed, error) {
+
 	csvFeed := &CSVFeed{
 		Feeds:               make(map[string]PairFeed),
 		CandlePairTimeFrame: make(map[string][]model.Candle),

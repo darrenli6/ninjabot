@@ -301,6 +301,7 @@ func (n *NinjaBot) preload(ctx context.Context, pair string) error {
 }
 
 // Run will initialize the strategy controller, order controller, preload data and start the bot
+// 初始化 strategy controller, order controller, preload data and start the bot
 func (n *NinjaBot) Run(ctx context.Context) error {
 	for _, pair := range n.settings.Pairs {
 		// setup and subscribe strategy to data feed (candles)

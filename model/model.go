@@ -18,6 +18,7 @@ type Settings struct {
 	Telegram TelegramSettings
 }
 
+// 账户 锁定
 type Balance struct {
 	Pair     string
 	Free     float64
@@ -25,6 +26,7 @@ type Balance struct {
 	Leverage float64
 }
 
+// 资产类别
 type AssetInfo struct {
 	BaseAsset  string
 	QuoteAsset string
@@ -153,7 +155,9 @@ type Account struct {
 }
 
 func (a Account) Balance(assetTick, quoteTick string) (Balance, Balance) {
+	// 拥有的 想要购买的
 	var assetBalance, quoteBalance Balance
+
 	var isSetAsset, isSetQuote bool
 
 	for _, balance := range a.Balances {

@@ -31,6 +31,7 @@ type Binance struct {
 
 type BinanceOption func(*Binance)
 
+// 传入key secret
 func WithBinanceCredentials(key, secret string) BinanceOption {
 	return func(b *Binance) {
 		b.APIKey = key
@@ -38,6 +39,7 @@ func WithBinanceCredentials(key, secret string) BinanceOption {
 	}
 }
 
+// 设置属性
 func WithBinanceHeikinAshiCandle() BinanceOption {
 	return func(b *Binance) {
 		b.HeikinAshi = true
@@ -46,6 +48,7 @@ func WithBinanceHeikinAshiCandle() BinanceOption {
 
 // WithMetadataFetcher will execute a function after receive a new candle and include additional
 // information to candle's metadata
+// 执行函数
 func WithMetadataFetcher(fetcher MetadataFetchers) BinanceOption {
 	return func(b *Binance) {
 		b.MetadataFetchers = append(b.MetadataFetchers, fetcher)
@@ -53,6 +56,7 @@ func WithMetadataFetcher(fetcher MetadataFetchers) BinanceOption {
 }
 
 // WithTestNet activate Bianance testnet
+// 使用test网络
 func WithTestNet() BinanceOption {
 	return func(b *Binance) {
 		binance.UseTestnet = true
@@ -66,7 +70,9 @@ func NewBinance(ctx context.Context, options ...BinanceOption) (*Binance, error)
 		option(exchange)
 	}
 
+	// 客户端
 	exchange.client = binance.NewClient(exchange.APIKey, exchange.APISecret)
+	// ping
 	err := exchange.client.NewPingService().Do(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("binance ping fail: %w", err)
@@ -110,6 +116,7 @@ func NewBinance(ctx context.Context, options ...BinanceOption) (*Binance, error)
 }
 
 func (b *Binance) LastQuote(ctx context.Context, pair string) (float64, error) {
+	// 最后一次报价
 	candles, err := b.CandlesByLimit(ctx, pair, "1m", 1)
 	if err != nil || len(candles) < 1 {
 		return 0, err
@@ -121,12 +128,13 @@ func (b *Binance) AssetsInfo(pair string) model.AssetInfo {
 	return b.assetsInfo[pair]
 }
 
+// 是否可以购买
 func (b *Binance) validate(pair string, quantity float64) error {
 	info, ok := b.assetsInfo[pair]
 	if !ok {
 		return ErrInvalidAsset
 	}
-
+	// 如果小于  或者大于
 	if quantity > info.MaxQuantity || quantity < info.MinQuantity {
 		return &OrderError{
 			Err:      fmt.Errorf("%w: min: %f max: %f", ErrInvalidQuantity, info.MinQuantity, info.MaxQuantity),
@@ -138,6 +146,39 @@ func (b *Binance) validate(pair string, quantity float64) error {
 	return nil
 }
 
+/*
+
+用于在 Binance 交易所创建一个新的 OCO（One-Cancels-the-Other）订单。OCO 订单是一种组合订单类型，其中包含两个子订单，一旦其中一个子订单成交，另一个子订单将自动取消。
+
+在这段代码中：
+
+b.client.NewCreateOCOService() 创建一个用于创建 OCO 订单的服务。
+配置 OCO 订单的参数：
+Side(binance.SideType(side))：设置订单的方向，买入（BUY）或卖出（SELL）。
+Quantity(b.formatQuantity(pair, quantity))：设置订单的数量。
+Price(b.formatPrice(pair, price))：设置限价订单的价格。
+StopPrice(b.formatPrice(pair, stop))：设置止损价格。
+StopLimitPrice(b.formatPrice(pair, stopLimit))：设置触发止损后的限价。
+StopLimitTimeInForce(binance.TimeInForceTypeGTC)：设置止损限价订单的有效期（在这里为 GTC，即 Good-Til-Canceled，订单会一直有效直到被取消）。
+Symbol(pair)：设置交易对（例如 "BTCUSDT"）。
+
+
+假设你是一位加密货币交易者，正在交易 BTC/USDT 交易对。当前 BTC 的价格为 50,000 USDT。你希望在 BTC 价格上涨时获利，同时在价格下跌时限制损失。在这种情况下，你可以使用 OCO 订单来实现这一策略。
+
+以下是一个 OCO 订单的示例：
+
+你预测 BTC 的价格将上涨，因此你计划在价格达到 52,000 USDT 时卖出 BTC，获得利润。
+但是，如果市场不利，BTC 的价格下跌，你希望在价格跌至 48,000 USDT 时止损，以减少损失。
+在这个例子中，你可以创建一个 OCO 订单，包含以下两个子订单：
+
+限价卖单：价格为 52,000 USDT。如果 BTC 的价格达到或超过 52,000 USDT，这个订单将被触发并成交，实现获利。
+止损限价卖单：止损价格为 48,000 USDT，限价为 47,500 USDT。如果 BTC 的价格跌至或低于 48,000 USDT，这个订单将被触发。在被触发后，系统将以 47,500 USDT 的价格挂出卖单。这样，一旦价格触发止损价，卖单会以限价或更好的价格成交，从而限制损失。
+创建了 OCO 订单后，一旦其中一个子订单成交，另一个子订单将自动取消。例如，如果限价卖单在 52,000 USDT 成交，止损限价卖单将自动取消。反之亦然，如果止损限价卖单在 48,000 USDT 触发并成交，限价卖单将自动取消。
+
+通过这种方式，OCO 订单允许你在一个复合订单中设置获利和止损策略，确保只有一个策略被执行，而另一个策略被自动取消。这简化了订单管理，同时为你的交易提供了更好的风险控制。
+
+*/
+
 func (b *Binance) CreateOrderOCO(side model.SideType, pair string,
 	quantity, price, stop, stopLimit float64) ([]model.Order, error) {
 
@@ -147,6 +188,7 @@ func (b *Binance) CreateOrderOCO(side model.SideType, pair string,
 		return nil, err
 	}
 
+	//OCO 订单是一种组合订单类型，其中包含两个子订单，一旦其中一个子订单成交，另一个子订单将自动取消。
 	ocoOrder, err := b.client.NewCreateOCOService().
 		Side(binance.SideType(side)).
 		Quantity(b.formatQuantity(pair, quantity)).
@@ -227,6 +269,7 @@ func (b *Binance) formatPrice(pair string, value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
+// 格式化数量
 func (b *Binance) formatQuantity(pair string, value float64) string {
 	if info, ok := b.assetsInfo[pair]; ok {
 		value = common.AmountToLotSize(info.StepSize, info.BaseAssetPrecision, value)
@@ -234,6 +277,7 @@ func (b *Binance) formatQuantity(pair string, value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
+// 限价单
 func (b *Binance) CreateOrderLimit(side model.SideType, pair string,
 	quantity float64, limit float64) (model.Order, error) {
 
@@ -264,6 +308,7 @@ func (b *Binance) CreateOrderLimit(side model.SideType, pair string,
 		return model.Order{}, err
 	}
 
+	// 返回订单
 	return model.Order{
 		ExchangeID: order.OrderID,
 		CreatedAt:  time.Unix(0, order.TransactTime*int64(time.Millisecond)),
@@ -447,8 +492,11 @@ func (b *Binance) Account() (model.Account, error) {
 	}, nil
 }
 
+// 仓位信息
 func (b *Binance) Position(pair string) (asset, quote float64, err error) {
+	// 资产  和  报价
 	assetTick, quoteTick := SplitAssetQuote(pair)
+	// 得到账户信息
 	acc, err := b.Account()
 	if err != nil {
 		return 0, 0, err
@@ -456,6 +504,7 @@ func (b *Binance) Position(pair string) (asset, quote float64, err error) {
 
 	assetBalance, quoteBalance := acc.Balance(assetTick, quoteTick)
 
+	// 得到资产  和 报价资产
 	return assetBalance.Free + assetBalance.Lock, quoteBalance.Free + quoteBalance.Lock, nil
 }
 

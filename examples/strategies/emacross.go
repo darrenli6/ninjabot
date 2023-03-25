@@ -10,6 +10,7 @@ import (
 
 type CrossEMA struct{}
 
+// 周期是4h
 func (e CrossEMA) Timeframe() string {
 	return "4h"
 }
@@ -22,6 +23,7 @@ func (e CrossEMA) Indicators(df *ninjabot.Dataframe) []strategy.ChartIndicator {
 	df.Metadata["ema8"] = indicator.EMA(df.Close, 8)
 	df.Metadata["sma21"] = indicator.SMA(df.Close, 21)
 
+	// 绘图指示
 	return []strategy.ChartIndicator{
 		{
 			Overlay:   true,
@@ -46,6 +48,7 @@ func (e CrossEMA) Indicators(df *ninjabot.Dataframe) []strategy.ChartIndicator {
 }
 
 func (e *CrossEMA) OnCandle(df *ninjabot.Dataframe, broker service.Broker) {
+	// 取出最后一根线的收盘价
 	closePrice := df.Close.Last(0)
 
 	assetPosition, quotePosition, err := broker.Position(df.Pair)

@@ -146,8 +146,41 @@ func (c *Controller) OnCandle(candle model.Candle) {
 	c.lastPrice[candle.Pair] = candle.Close
 }
 
+/*
+这个函数的主要目的是计算订单的利润（value）和利润百分比（percent）。它接收一个指向 model.Order 类型的指针 o 作为参数，并返回计算得到的利润值、利润百分比以及可能的错误（err）。
+
+以下是该函数的大致步骤：
+
+从存储中获取在当前订单之前已完成（状态为已成交，model.OrderStatusTypeFilled）的订单，同时筛选出与当前订单具有相同交易对（o.Pair）的订单。
+
+初始化变量：quantity（表示持有数量，正数表示买入，负数表示卖出），avgPriceLong（表示买入平均价格）和 avgPriceShort（表示卖出平均价格）。
+
+遍历筛选后的订单：
+
+跳过当前订单（o.ID == order.ID）。
+计算订单价格。对于止损和止损限价订单，使用止损价格（*order.Stop）。
+根据订单方向（买入/卖出）计算持有数量的变化（diff）。
+计算买入和卖出的平均价格。
+更新持有数量（quantity）。
+如果最终持有数量（quantity）为零，则返回 0 利润值和 0 利润百分比。
+
+如果当前订单是买入订单（o.Side == model.SideTypeBuy），并且持有数量为负数（即空头），则计算空头利润：
+
+使用当前订单价格或止损价格计算利润值。
+计算利润百分比。
+返回利润值和利润百分比。
+如果当前订单是卖出订单（o.Side == model.SideTypeSell），并且持有数量为正数（即多头），则计算多头利润：
+
+使用当前订单价格或止损价格计算利润值。
+计算利润百分比。
+返回利润值和利润百分比。
+如果不满足上述条件，则返回 0 利润值和 0 利润百分比。
+
+这个函数可以用于计算在给定订单的情况下，交易者的利润值和利润百分比。它可以帮助交易者了解他们在交易过程中的盈亏情况。
+*/
 func (c *Controller) calculateProfit(o *model.Order) (value, percent float64, err error) {
 	// get filled orders before the current order
+	// 筛选
 	orders, err := c.storage.Orders(
 		storage.WithUpdateAtBeforeOrEqual(o.UpdatedAt),
 		storage.WithStatus(model.OrderStatusTypeFilled),
@@ -162,6 +195,7 @@ func (c *Controller) calculateProfit(o *model.Order) (value, percent float64, er
 	avgPriceShort := 0.0
 
 	for _, order := range orders {
+
 		// skip current order
 		if o.ID == order.ID {
 			continue
@@ -203,6 +237,18 @@ func (c *Controller) calculateProfit(o *model.Order) (value, percent float64, er
 			price = *o.Stop
 		}
 		profitValue := (avgPriceShort - price) * o.Quantity
+
+		/*
+			这部分计算的是空头交易的利润百分比。我们将其分解如下：
+
+			profitValue：空头利润值，即（平均卖出价格 - 当前订单价格）* 订单数量。空头交易的目标是在价格下跌时获利，所以我们从平均卖出价格中减去当前订单价格。
+
+			o.Quantity：当前订单的数量。我们用利润值除以订单数量，以获取每个单位的利润。
+
+			avgPriceShort：平均卖出价格，即之前的卖出订单的平均价格。我们将每个单位的利润再除以平均卖出价格，得到空头利润的百分比。
+
+			综上，profitValue / o.Quantity / avgPriceShort 是计算空头利润百分比的公式。这个百分比表示相对于平均卖出价格的盈亏情况。例如，如果空头利润百分比为 0.05，表示当前订单相对于平均卖出价格获得了 5% 的利润。
+		*/
 		return profitValue, profitValue / o.Quantity / avgPriceShort, nil
 	}
 
@@ -328,6 +374,7 @@ func (c *Controller) Status() Status {
 }
 
 func (c *Controller) Start() {
+	// 定时任务
 	if c.status != StatusRunning {
 		c.status = StatusRunning
 		go func() {

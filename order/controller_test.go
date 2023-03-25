@@ -17,19 +17,24 @@ func TestController_calculateProfit(t *testing.T) {
 		storage, err := storage.FromMemory()
 		require.NoError(t, err)
 		ctx := context.Background()
+		// 创建账户
 		wallet := exchange.NewPaperWallet(ctx, "USDT", exchange.WithPaperAsset("USDT", 3000))
+
 		controller := NewController(ctx, wallet, storage, NewOrderFeed())
 
 		wallet.OnCandle(model.Candle{Pair: "BTCUSDT", Close: 1000})
+		// 市价单
 		_, err = controller.CreateOrderMarket(model.SideTypeBuy, "BTCUSDT", 1)
 		require.NoError(t, err)
 
 		wallet.OnCandle(model.Candle{Pair: "BTCUSDT", Close: 2000})
+		// 市价单
 		_, err = controller.CreateOrderMarket(model.SideTypeBuy, "BTCUSDT", 1)
 		require.NoError(t, err)
 
 		// close half position 1BTC with 100% of profit
 		wallet.OnCandle(model.Candle{Pair: "BTCUSDT", Close: 3000})
+		// 卖了
 		sellOrder, err := controller.CreateOrderMarket(model.SideTypeSell, "BTCUSDT", 1)
 		require.NoError(t, err)
 

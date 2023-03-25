@@ -16,6 +16,7 @@ func main() {
 	ctx := context.Background()
 
 	// bot settings (eg: pairs, telegram, etc)
+	// 设置参数
 	settings := ninjabot.Settings{
 		Pairs: []string{
 			"BTCUSDT",
@@ -51,6 +52,7 @@ func main() {
 	}
 
 	// create a paper wallet for simulation, initializing with 10.000 USDT
+	// 钱包初始化
 	wallet := exchange.NewPaperWallet(
 		ctx,
 		"USDT",
