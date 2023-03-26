@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/adshao/go-binance/v2"
@@ -14,6 +15,21 @@ import (
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
+
+type MarginType = futures.MarginType
+
+var (
+	MarginTypeIsolated MarginType = "ISOLATED"
+	MarginTypeCrossed  MarginType = "CROSSED"
+
+	ErrNoNeedChangeMarginType int64 = -4046
+)
+
+type PairOption struct {
+	Pair       string
+	Leverage   int
+	MarginType futures.MarginType
+}
 
 type BinanceFuture struct {
 	ctx        context.Context
@@ -26,6 +42,7 @@ type BinanceFuture struct {
 	APISecret string
 
 	MetadataFetchers []MetadataFetchers
+	PairOptions      []PairOption
 }
 
 type BinanceFutureOption func(*BinanceFuture)
@@ -37,10 +54,22 @@ func WithBinanceFuturesHeikinAshiCandle() BinanceFutureOption {
 	}
 }
 
+// WithBinanceFutureCredentials will set the credentials for Binance Futures
 func WithBinanceFutureCredentials(key, secret string) BinanceFutureOption {
 	return func(b *BinanceFuture) {
 		b.APIKey = key
 		b.APISecret = secret
+	}
+}
+
+// WithBinanceFutureLeverage will set the leverage for a pair
+func WithBinanceFutureLeverage(pair string, leverage int, marginType MarginType) BinanceFutureOption {
+	return func(b *BinanceFuture) {
+		b.PairOptions = append(b.PairOptions, PairOption{
+			Pair:       strings.ToUpper(pair),
+			Leverage:   leverage,
+			MarginType: marginType,
+		})
 	}
 }
 
@@ -61,6 +90,21 @@ func NewBinanceFuture(ctx context.Context, options ...BinanceFutureOption) (*Bin
 	results, err := exchange.client.NewExchangeInfoService().Do(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set leverage and margin type
+	for _, option := range exchange.PairOptions {
+		_, err = exchange.client.NewChangeLeverageService().Symbol(option.Pair).Leverage(option.Leverage).Do(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		err = exchange.client.NewChangeMarginTypeService().Symbol(option.Pair).MarginType(option.MarginType).Do(ctx)
+		if err != nil {
+			if apiError, ok := err.(*common.APIError); !ok || apiError.Code != ErrNoNeedChangeMarginType {
+				return nil, err
+			}
+		}
 	}
 
 	// Initialize with orders precision and assets limits
@@ -259,8 +303,46 @@ func (b *BinanceFuture) CreateOrderMarket(side model.SideType, pair string, quan
 	}, nil
 }
 
-func (b *BinanceFuture) CreateOrderMarketQuote(_ model.SideType, _ string, _ float64) (model.Order, error) {
-	panic("not implemented")
+func (b *BinanceFuture) CreateOrderMarketQuote(side model.SideType, pair string, quantity float64) (model.Order, error) {
+
+	err := b.validate(pair, quantity)
+	if err != nil {
+		return model.Order{}, err
+	}
+
+	order, err := b.client.NewCreateOrderService().
+		Symbol(pair).
+		Type(binance.OrderTypeMarket).
+		Side(binance.SideType(side)).
+		QuoteOrderQty(b.formatQuantity(pair, quantity)).
+		NewOrderRespType(binance.NewOrderRespTypeFULL).
+		Do(b.ctx)
+	if err != nil {
+		return model.Order{}, err
+	}
+
+	cost, err := strconv.ParseFloat(order.CummulativeQuoteQuantity, 64)
+	if err != nil {
+		return model.Order{}, err
+	}
+
+	quantity, err = strconv.ParseFloat(order.ExecutedQuantity, 64)
+	if err != nil {
+		return model.Order{}, err
+	}
+
+	return model.Order{
+		ExchangeID: order.OrderID,
+		CreatedAt:  time.Unix(0, order.TransactTime*int64(time.Millisecond)),
+		UpdatedAt:  time.Unix(0, order.TransactTime*int64(time.Millisecond)),
+		Pair:       order.Symbol,
+		Side:       model.SideType(order.Side),
+		Type:       model.OrderType(order.Type),
+		Status:     model.OrderStatusType(order.Status),
+		Price:      cost / quantity,
+		Quantity:   quantity,
+	}, nil
+
 }
 
 func (b *BinanceFuture) Cancel(order model.Order) error {
@@ -356,10 +438,28 @@ func (b *BinanceFuture) Account() (model.Account, error) {
 			free = -free
 		}
 
+		asset, _ := SplitAssetQuote(position.Symbol)
+
 		balances = append(balances, model.Balance{
-			Pair:     position.Symbol,
+			Asset:    asset,
 			Free:     free,
 			Leverage: leverage,
+		})
+	}
+
+	for _, asset := range acc.Assets {
+		free, err := strconv.ParseFloat(asset.WalletBalance, 64)
+		if err != nil {
+			return model.Account{}, err
+		}
+
+		if free == 0 {
+			continue
+		}
+
+		balances = append(balances, model.Balance{
+			Asset: asset.Asset,
+			Free:  free,
 		})
 	}
 

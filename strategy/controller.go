@@ -7,6 +7,18 @@ import (
 	"github.com/rodrigo-brito/ninjabot/service"
 )
 
+/*
+这段代码定义了一个名为Controller的结构体，它用于处理交易策略。Controller的主要功能是在接收到蜡烛图数据时，
+更新交易策略和数据框，然后调用交易策略的OnCandle和OnPartialCandle方法。以下是代码的主要组成部分：
+
+Controller结构体：包含一个交易策略（strategy）、一个数据框（dataframe）、一个代理服务（broker）以及一个布尔值（started）表示控制器是否已启动。
+NewStrategyController函数：创建一个新的Controller实例，接收一个交易对（pair）、一个交易策略（strategy）以及一个代理服务（broker）作为参数。
+Start方法：将started设置为true，表示控制器已启动。
+OnPartialCandle方法：当接收到一个不完整的蜡烛图数据时调用此方法。如果蜡烛图数据不完整，且数据框的Close数据长度大于等于策略的热身周期，此方法会更新数据框，计算策略指标，并调用策略的OnPartialCandle方法。
+updateDataFrame方法：根据给定的蜡烛图数据更新数据框。
+OnCandle方法：当接收到一个完整的蜡烛图数据时调用此方法。首先，此方法会检查蜡烛图数据的时间戳，确保其晚于数据框中最后一个时间戳。然后，更新数据框，计算策略指标。最后，如果控制器已启动，调用策略的OnCandle方法。
+这个Controller结构体可以用于处理交易策略，在接收到蜡烛图数据时更新策略状态并执行策略相关操作。这对于实时交易策略执行非常有用。
+*/
 type Controller struct {
 	strategy  Strategy
 	dataframe *model.Dataframe

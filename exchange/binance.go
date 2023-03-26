@@ -3,6 +3,7 @@ package exchange
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -15,6 +16,11 @@ import (
 )
 
 type MetadataFetchers func(pair string, t time.Time) (string, float64)
+
+func init() {
+	os.Setenv("HTTP_PROXY", "http://127.0.0.1:1087")
+	os.Setenv("HTTPS_PROXY", "http://127.0.0.1:1087")
+}
 
 type Binance struct {
 	ctx        context.Context
@@ -31,7 +37,8 @@ type Binance struct {
 
 type BinanceOption func(*Binance)
 
-// 传入key secret
+// WithBinanceCredentials will set Binance credentials
+
 func WithBinanceCredentials(key, secret string) BinanceOption {
 	return func(b *Binance) {
 		b.APIKey = key
@@ -39,7 +46,7 @@ func WithBinanceCredentials(key, secret string) BinanceOption {
 	}
 }
 
-// 设置属性
+// WithBinanceHeikinAshiCandle will convert candle to Heikin Ashi
 func WithBinanceHeikinAshiCandle() BinanceOption {
 	return func(b *Binance) {
 		b.HeikinAshi = true
@@ -63,6 +70,7 @@ func WithTestNet() BinanceOption {
 	}
 }
 
+// NewBinance create a new Binance exchange instance
 func NewBinance(ctx context.Context, options ...BinanceOption) (*Binance, error) {
 	binance.WebsocketKeepalive = true
 	exchange := &Binance{ctx: ctx}
@@ -175,6 +183,8 @@ Symbol(pair)：设置交易对（例如 "BTCUSDT"）。
 止损限价卖单：止损价格为 48,000 USDT，限价为 47,500 USDT。如果 BTC 的价格跌至或低于 48,000 USDT，这个订单将被触发。在被触发后，系统将以 47,500 USDT 的价格挂出卖单。这样，一旦价格触发止损价，卖单会以限价或更好的价格成交，从而限制损失。
 创建了 OCO 订单后，一旦其中一个子订单成交，另一个子订单将自动取消。例如，如果限价卖单在 52,000 USDT 成交，止损限价卖单将自动取消。反之亦然，如果止损限价卖单在 48,000 USDT 触发并成交，限价卖单将自动取消。
 
+stop 是触发
+stop limit 是挂单
 通过这种方式，OCO 订单允许你在一个复合订单中设置获利和止损策略，确保只有一个策略被执行，而另一个策略被自动取消。这简化了订单管理，同时为你的交易提供了更好的风险控制。
 
 */
@@ -189,6 +199,7 @@ func (b *Binance) CreateOrderOCO(side model.SideType, pair string,
 	}
 
 	//OCO 订单是一种组合订单类型，其中包含两个子订单，一旦其中一个子订单成交，另一个子订单将自动取消。
+
 	ocoOrder, err := b.client.NewCreateOCOService().
 		Side(binance.SideType(side)).
 		Quantity(b.formatQuantity(pair, quantity)).
@@ -321,6 +332,22 @@ func (b *Binance) CreateOrderLimit(side model.SideType, pair string,
 		Quantity:   quantity,
 	}, nil
 }
+
+/*
+这两个方法的主要区别在于市价订单的执行方式。这里是两个方法的主要区别：
+
+CreateOrderMarket：这个方法用于创建基于订单数量（quantity）的市价订单。在这种情况下，
+您需要指定购买或出售的基本资产数量。例如，如果您要在BTC/USDT交易对上以市场价格购买0.01个BTC，那么您需要使用这个方法，
+并将quantity设置为0.01。
+CreateOrderMarketQuote：这个方法用于创建基于报价资产订单数量（quantity）的市价订单。
+在这种情况下，您需要指定购买或出售的报价资产数量。例如，如果您要在BTC/USDT交易对上以市场价格购买价值100 USDT的BTC，
+那么您需要使用这个方法，并将quantity设置为100。
+在这两种情况下，创建市价订单的主要逻辑相同，但在CreateOrderMarket方法中，
+您需要使用.Quantity()设置订单数量，而在CreateOrderMarketQuote方法中，您需要使用.QuoteOrderQty()设置报价资产订单数量。
+返回的model.Order对象在两个方法中都是相似的。
+
+总之，CreateOrderMarket和CreateOrderMarketQuote方法的区别在于它们处理市价订单的方式。前者基于基本资产的数量，后者基于报价资产的数量。根据您的交易需求选择合适的方法。
+*/
 
 func (b *Binance) CreateOrderMarket(side model.SideType, pair string, quantity float64) (model.Order, error) {
 	err := b.validate(pair, quantity)
@@ -481,9 +508,9 @@ func (b *Binance) Account() (model.Account, error) {
 			return model.Account{}, err
 		}
 		balances = append(balances, model.Balance{
-			Pair: balance.Asset,
-			Free: free,
-			Lock: locked,
+			Asset: balance.Asset,
+			Free:  free,
+			Lock:  locked,
 		})
 	}
 
@@ -492,6 +519,12 @@ func (b *Binance) Account() (model.Account, error) {
 	}, nil
 }
 
+/*
+这是一个在Binance交易所获取特定交易对头寸的函数。
+函数首先通过调用 SplitAssetQuote 函数将交易对拆分为资产和计价货币。
+然后，它调用 Account 函数来获取当前账户的余额信息，并使用 Balance 函数获取该交易对的资产和计价货币的余额。
+最后，函数将这些余额相加并返回资产和计价货币的总余额。
+*/
 // 仓位信息
 func (b *Binance) Position(pair string) (asset, quote float64, err error) {
 	// 资产  和  报价
@@ -507,6 +540,13 @@ func (b *Binance) Position(pair string) (asset, quote float64, err error) {
 	// 得到资产  和 报价资产
 	return assetBalance.Free + assetBalance.Lock, quoteBalance.Free + quoteBalance.Lock, nil
 }
+
+/*
+这个函数用于订阅Binance的K线数据流，并返回一个包含接收到的K线数据的通道和一个错误通道。
+它需要一个上下文对象作为参数，用于在需要时取消订阅。它还需要一个交易对和一个K线周期作为参数
+。在内部，它使用Binance Go SDK提供的函数来建立WebSocket连接，并将接收到的K线数据转换为模型中的Candle对象，
+并发送到Candle通道中。如果有任何错误发生，它会发送到错误通道中。
+*/
 
 func (b *Binance) CandlesSubscription(ctx context.Context, pair, period string) (chan model.Candle, chan error) {
 	ccandle := make(chan model.Candle)
@@ -577,6 +617,7 @@ func (b *Binance) CandlesByLimit(ctx context.Context, pair, period string, limit
 	}
 
 	for _, d := range data {
+		// kline转化为  CandleFromKline
 		candle := CandleFromKline(pair, *d)
 
 		if b.HeikinAshi {

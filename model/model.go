@@ -20,13 +20,21 @@ type Settings struct {
 
 // 账户 锁定
 type Balance struct {
-	Pair     string
+	Asset    string
 	Free     float64
 	Lock     float64
 	Leverage float64
 }
 
-// 资产类别
+/*
+这段代码定义了一个名为 AssetInfo 的结构体，该结构体包含以下字段：
+
+BaseAsset 和 QuoteAsset：表示交易对的基础资产和计价资产。
+MinPrice 和 MaxPrice：表示该交易对价格的最小值和最大值。
+MinQuantity 和 MaxQuantity：表示该交易对的最小和最大交易数量。
+StepSize 和 TickSize：表示该交易对价格和数量的最小单位，即价格和数量的步长和精度。
+QuotePrecision 和 BaseAssetPrecision：表示计价资产和基础资产的精度，即小数点后的位数。
+*/
 type AssetInfo struct {
 	BaseAsset  string
 	QuoteAsset string
@@ -161,7 +169,7 @@ func (a Account) Balance(assetTick, quoteTick string) (Balance, Balance) {
 	var isSetAsset, isSetQuote bool
 
 	for _, balance := range a.Balances {
-		switch balance.Pair {
+		switch balance.Asset {
 		case assetTick:
 			assetBalance = balance
 			isSetAsset = true

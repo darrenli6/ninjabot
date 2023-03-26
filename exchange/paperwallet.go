@@ -474,9 +474,9 @@ func (p *PaperWallet) Account() (model.Account, error) {
 	balances := make([]model.Balance, 0)
 	for pair, info := range p.assets {
 		balances = append(balances, model.Balance{
-			Pair: pair,
-			Free: info.Free,
-			Lock: info.Lock,
+			Asset: pair,
+			Free:  info.Free,
+			Lock:  info.Lock,
 		})
 	}
 
@@ -504,6 +504,10 @@ func (p *PaperWallet) CreateOrderOCO(side model.SideType, pair string,
 	size, price, stop, stopLimit float64) ([]model.Order, error) {
 	p.Lock()
 	defer p.Unlock()
+
+	if size == 0 {
+		return nil, ErrInvalidQuantity
+	}
 
 	err := p.validateFunds(side, pair, size, price, false)
 	if err != nil {
@@ -550,6 +554,10 @@ func (p *PaperWallet) CreateOrderLimit(side model.SideType, pair string,
 	p.Lock()
 	defer p.Unlock()
 
+	if size == 0 {
+		return model.Order{}, ErrInvalidQuantity
+	}
+
 	err := p.validateFunds(side, pair, size, limit, false)
 	if err != nil {
 		return model.Order{}, err
@@ -580,6 +588,10 @@ func (p *PaperWallet) CreateOrderStop(pair string, size float64, limit float64) 
 	p.Lock()
 	defer p.Unlock()
 
+	if size == 0 {
+		return model.Order{}, ErrInvalidQuantity
+	}
+
 	err := p.validateFunds(model.SideTypeSell, pair, size, limit, false)
 	if err != nil {
 		return model.Order{}, err
@@ -602,6 +614,10 @@ func (p *PaperWallet) CreateOrderStop(pair string, size float64, limit float64) 
 }
 
 func (p *PaperWallet) createOrderMarket(side model.SideType, pair string, size float64) (model.Order, error) {
+	if size == 0 {
+		return model.Order{}, ErrInvalidQuantity
+	}
+
 	err := p.validateFunds(side, pair, size, p.lastCandle[pair].Close, true)
 	if err != nil {
 		return model.Order{}, err

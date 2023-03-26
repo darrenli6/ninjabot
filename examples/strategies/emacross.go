@@ -8,6 +8,22 @@ import (
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
 
+/*
+这是一个名为CrossEMA的策略实现，实现了Strategy接口。
+
+Timeframe方法返回策略的时间框架，这里是4小时。
+
+WarmupPeriod方法返回策略启动前需要等待的周期数，这里是21个周期。
+
+Indicators方法接受一个数据帧作为输入，该数据帧包含一个交易对的OHLCV数据，
+并使用indicator.EMA和indicator.SMA函数计算EMA8和SMA21指标。然后它返回一个ChartIndicator结构体的切片，用于在图表上绘制指标。
+
+OnCandle方法在每个新的蜡烛图出现时被调用，计算完指标后。它检查EMA8指标是否上穿或下穿SMA21指标，
+并相应地开仓或平仓，使用broker.CreateOrderMarket方法放置市价单。
+
+总的来说，CrossEMA策略是一种简单的趋势跟踪策略，使用两个移动平均线生成开仓和平仓的信号。
+*/
+
 type CrossEMA struct{}
 
 // 周期是4h
@@ -57,45 +73,22 @@ func (e *CrossEMA) OnCandle(df *ninjabot.Dataframe, broker service.Broker) {
 		return
 	}
 
-	if (quotePosition > 10 || assetPosition*closePrice < -10) && df.Metadata["ema8"].Crossover(df.Metadata["sma21"]) {
-		if assetPosition < 0 {
-			// close previous short position
-			_, err := broker.CreateOrderMarket(ninjabot.SideTypeBuy, df.Pair, -assetPosition)
-			if err != nil {
-				log.Error(err)
-			}
+	if quotePosition >= 10 && // minimum quote position to trade
+		df.Metadata["ema8"].Crossover(df.Metadata["sma21"]) { // trade signal (EMA8 > SMA21)
 
-			assetPosition, quotePosition, err = broker.Position(df.Pair)
-			if err != nil {
-				log.Error(err)
-				return
-			}
-		}
-
-		_, err = broker.CreateOrderMarket(ninjabot.SideTypeBuy, df.Pair, quotePosition/closePrice*0.99)
+		amount := quotePosition / closePrice // calculate amount of asset to buy
+		_, err := broker.CreateOrderMarket(ninjabot.SideTypeBuy, df.Pair, amount)
 		if err != nil {
 			log.Error(err)
 		}
+
 		return
 	}
 
-	if (assetPosition*closePrice > 10 || quotePosition > 10) &&
-		df.Metadata["ema8"].Crossunder(df.Metadata["sma21"]) {
-		if assetPosition > 0 {
-			// close previous long position
-			_, err := broker.CreateOrderMarket(ninjabot.SideTypeSell, df.Pair, assetPosition)
-			if err != nil {
-				log.Error(err)
-			}
+	if assetPosition > 0 &&
+		df.Metadata["ema8"].Crossunder(df.Metadata["sma21"]) { // trade signal (EMA8 < SMA21)
 
-			assetPosition, quotePosition, err = broker.Position(df.Pair)
-			if err != nil {
-				log.Error(err)
-				return
-			}
-		}
-
-		_, err = broker.CreateOrderMarket(ninjabot.SideTypeSell, df.Pair, quotePosition/closePrice*0.99)
+		_, err = broker.CreateOrderMarket(ninjabot.SideTypeSell, df.Pair, assetPosition)
 		if err != nil {
 			log.Error(err)
 		}
