@@ -70,7 +70,7 @@ func (df Dataframe) Sample(positions int) Dataframe {
 	sample := df
 	size := len(sample.Time)
 	start := size - positions
-	if start <= 0 {
+	if size <= positions || start < 0 {
 		return df
 	}
 
