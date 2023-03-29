@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/rodrigo-brito/ninjabot/model"
+
 	"github.com/tidwall/buntdb"
 )
 
