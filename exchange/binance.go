@@ -171,7 +171,10 @@ StopLimitTimeInForce(binance.TimeInForceTypeGTC)：设置止损限价订单的�
 Symbol(pair)：设置交易对（例如 "BTCUSDT"）。
 
 
-假设你是一位加密货币交易者，正在交易 BTC/USDT 交易对。当前 BTC 的价格为 50,000 USDT。你希望在 BTC 价格上涨时获利，同时在价格下跌时限制损失。在这种情况下，你可以使用 OCO 订单来实现这一策略。
+假设你是一位加密货币交易者，正在交易 BTC/USDT 交易对。
+当前 BTC 的价格为 50,000 USDT。你希望在 BTC 价格上涨时获利，
+同时在价格下跌时限制损失。在这种情况下，
+你可以使用 OCO 订单来实现这一策略。
 
 以下是一个 OCO 订单的示例：
 
@@ -189,8 +192,12 @@ stop limit 是挂单
 
 */
 
-func (b *Binance) CreateOrderOCO(side model.SideType, pair string,
-	quantity, price, stop, stopLimit float64) ([]model.Order, error) {
+func (b *Binance) CreateOrderOCO(side model.SideType,
+	pair string,
+	quantity,
+	price,
+	stop,
+	stopLimit float64) ([]model.Order, error) {
 
 	// validate stop
 	err := b.validate(pair, quantity)

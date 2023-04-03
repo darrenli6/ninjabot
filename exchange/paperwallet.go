@@ -491,6 +491,29 @@ func (p *PaperWallet) updateAveragePrice(side model.SideType, pair string, amoun
 	}
 }
 
+/*
+这个函数是一个回调函数，用于在每个K线（蜡烛）到达时更新虚拟交易钱包的状态。具体而言，它会执行以下操作：
+
+更新最新的蜡烛（candle）和第一个蜡烛（firstCandle）。
+遍历当前订单列表，对于与蜡烛对应交易对（Pair）相同且状态为“New”的订单，执行以下操作：
+如果是买入订单并且价格大于等于蜡烛的收盘价，则将订单状态更新为“Filled”，更新订单量和交易量，更新资产大小和平均价格。
+如果是卖出订单，则根据订单类型和价格与蜡烛的最高价和最低价进行比较，如果满足条件，则将订单状态更新为“Filled”，更新订单量和交易量，更新资产大小和平均价格。如果该订单属于某一组，取消组中除自身之外的其他订单。
+如果蜡烛已完成，则计算所有资产的价值和钱包的净值，并将结果添加到资产价值历史和净值历史中。
+下面是一个示例，展示了如何使用该函数更新虚拟交易钱包的状态：
+
+假设有一个虚拟交易钱包，钱包中有一些资产，并且有一些订单尚未执行。当每个新的K线（蜡烛）到达时，我们希望更新钱包的状态，以便我们可以跟踪交易的利润和钱包的净值。
+
+假设我们当前在 BTC/USD 交易对上执行一组订单，其中一个限价卖单的价格为 10,000 USD。当蜡烛的收盘价小于 10,000 USD 时，我们期望该订单状态保持为“New”，直到价格上升到 10,000 USD 时才将其标记为“Filled”。
+
+现在，当新的 BTC/USD 蜡烛到达时，我们调用 OnCandle 函数。函数首先更新最新的蜡烛和第一个蜡烛。然后，它遍历当前订单列表并查找 BTC/USD 订单。由于当前的蜡烛收盘价低于 10,000 USD，该订单的状态不会被更新。在计算资产价值和净值之后，我们将得到更新的钱包状态。
+
+
+
+
+
+
+*/
+
 func (p *PaperWallet) OnCandle(candle model.Candle) {
 	p.Lock()
 	defer p.Unlock()
@@ -642,6 +665,21 @@ func (p *PaperWallet) CreateOrderOCO(side model.SideType, pair string,
 	}
 
 	groupID := p.ID()
+	/*
+		这段代码创建了一个名为 limitMaker 的订单对象，该订单对象包含了一个限价挂单的详细信息，其属性包括：
+
+		ExchangeID：该订单所属的交易所 ID。
+		CreatedAt：该订单的创建时间。
+		UpdatedAt：该订单的更新时间。
+		Pair：该订单的交易对。
+		Side：该订单的买卖方向，可以是 model.SideTypeBuy 或 model.SideTypeSell。
+		Type：该订单的订单类型，可以是 model.OrderTypeLimitMaker 或其他类型的订单（如 model.OrderTypeLimit）。
+		Status：该订单的状态，可以是 model.OrderStatusTypeNew、model.OrderStatusTypeFilled、model.OrderStatusTypeCanceled 等状态。
+		Price：该订单的挂单价格。
+		Quantity：该订单的数量。
+		GroupID：该订单所属的订单组 ID。
+		RefPrice：该订单的参考价格，即订单创建时的市场价格
+	*/
 	limitMaker := model.Order{
 		ExchangeID: p.ID(),
 		CreatedAt:  p.lastCandle[pair].Time,
@@ -655,6 +693,40 @@ func (p *PaperWallet) CreateOrderOCO(side model.SideType, pair string,
 		GroupID:    &groupID,
 		RefPrice:   p.lastCandle[pair].Close,
 	}
+
+	/*
+
+			这段代码创建了一个名为 stopOrder 的订单对象，该订单对象包含了一个停损订单的详细信息，其属性包括：
+
+			ExchangeID：该订单所属的交易所 ID。
+			CreatedAt：该订单的创建时间。
+			UpdatedAt：该订单的更新时间。
+			Pair：该订单的交易对。
+			Side：该订单的买卖方向，可以是 model.SideTypeBuy 或 model.SideTypeSell。
+			Type：该订单的订单类型，可以是 model.OrderTypeStopLoss 或其他类型的订单（如 model.OrderTypeLimit）。
+			Status：该订单的状态，可以是 model.OrderStatusTypeNew、model.OrderStatusTypeFilled、model.OrderStatusTypeCanceled 等状态。
+			Price：该订单的触发价格，即当市场价格达到该价格时，该订单将被触发执行。
+			Stop：当触发价格被触及时，该订单的执行价格将是 Stop 属性的值。例如，如果 Side 是 model.SideTypeSell，则 Stop 属性将是一个低于当前市场价的价格。
+			Quantity：该订单的数量。
+			GroupID：该订单所属的订单组 ID。
+			RefPrice：该订单的参考价格，即订单创建时的市场价格。
+			例如，假设交易所 ID 是 binance，该订单在 2023 年 4 月 1 日创建，交易对是 BTC/USDT，买卖方向是 model.SideTypeSell，订单类型是 model.OrderTypeStopLoss，触发价格是 50,000 美元，执行价格是 49,000 美元，
+		数量是 0.5 BTC，订单组 ID 是 123456，参考价格是当前市场价 51,000 美元。则可以创建一个如下的停损订单：
+		stopOrder := model.Order{
+		    ExchangeID: "binance",
+		    CreatedAt:  time.Date(2023, 4, 1, 0, 0, 0, 0, time.UTC),
+		    UpdatedAt:  time.Date(2023, 4, 1, 0, 0, 0, 0, time.UTC),
+		    Pair:       "BTC/USDT",
+		    Side:       model.SideTypeSell,
+		    Type:       model.OrderTypeStopLoss,
+		    Status:     model.OrderStatusTypeNew,
+		    Price:      50000,
+		    Stop:       &49000,
+		    Quantity:   0.5,
+		    GroupID:    &123456,
+		    RefPrice:   51000,
+		}
+	*/
 
 	stopOrder := model.Order{
 		ExchangeID: p.ID(),
@@ -724,6 +796,9 @@ func (p *PaperWallet) CreateOrderStop(pair string, size float64, limit float64) 
 		return model.Order{}, err
 	}
 
+	/*
+
+	 */
 	order := model.Order{
 		ExchangeID: p.ID(),
 		CreatedAt:  p.lastCandle[pair].Time,
